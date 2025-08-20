@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { AgentCommand, File, Folder, ProjectTemplate, RepoNode } from '../types';
 import { AGENT_COMMANDS, INITIAL_REPO_STRUCTURE, PROJECT_TEMPLATES, LogoIcon, AIFamilyIcon } from '../constants';
@@ -132,7 +131,12 @@ const ActionsPanel: React.FC<{
     onTemplateChange: (templateId: string) => void;
     onCommandRun: (command: AgentCommand) => void;
     onShowToast: (message: string) => void;
-}> = ({ stagedFiles, onCommit, onTemplateChange, onCommandRun, onShowToast }) => {
+    apiName: string;
+    onApiNameChange: (value: string) => void;
+    apiKey: string;
+    onApiKeyChange: (value: string) => void;
+    onSetEnvVars: () => void;
+}> = ({ stagedFiles, onCommit, onTemplateChange, onCommandRun, onShowToast, apiName, onApiNameChange, apiKey, onApiKeyChange, onSetEnvVars }) => {
     const [commitMessage, setCommitMessage] = useState('');
 
     const handleCommit = () => {
@@ -182,6 +186,41 @@ const ActionsPanel: React.FC<{
                     <button onClick={() => onShowToast('Download functionality coming soon!')} className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 p-2 rounded-md text-xs"><DownloadIcon /> Download</button>
                  </div>
             </div>
+            {/* Container Environment */}
+            <div className="mb-6">
+                 <h3 className="font-bold mb-2">Container Environment</h3>
+                 <div className="space-y-2">
+                     <div>
+                         <label htmlFor="api-name" className="block text-xs font-medium text-brand-text-muted mb-1">API_NAME</label>
+                         <input
+                             type="text"
+                             id="api-name"
+                             value={apiName}
+                             onChange={(e) => onApiNameChange(e.target.value)}
+                             placeholder="e.g., GEMINI_API_KEY"
+                             className="w-full bg-brand-dark/50 border border-brand-border rounded-md p-2 text-xs focus:ring-neon-purple focus:border-neon-purple"
+                         />
+                     </div>
+                     <div>
+                         <label htmlFor="api-key" className="block text-xs font-medium text-brand-text-muted mb-1">API_KEY</label>
+                         <input
+                             type="password"
+                             id="api-key"
+                             value={apiKey}
+                             onChange={(e) => onApiKeyChange(e.target.value)}
+                             placeholder="Enter your secret key"
+                             className="w-full bg-brand-dark/50 border border-brand-border rounded-md p-2 text-xs focus:ring-neon-purple focus:border-neon-purple"
+                         />
+                     </div>
+                 </div>
+                 <button
+                    onClick={onSetEnvVars}
+                    disabled={!apiName.trim() || !apiKey.trim()}
+                    className="w-full bg-neon-blue/80 text-black font-bold py-2 rounded-md mt-2 hover:bg-neon-blue disabled:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                >
+                   Set Variables
+                </button>
+            </div>
             {/* Agent Commands */}
             <div>
                  <h3 className="font-bold mb-2">Agent Commands</h3>
@@ -208,6 +247,8 @@ const RepositoryPage: React.FC = () => {
     const [editorContent, setEditorContent] = useState<string>('');
     const [stagedFiles, setStagedFiles] = useState<Set<string>>(new Set());
     const [toastInfo, setToastInfo] = useState<{show: boolean; message: string}>({show: false, message: ''});
+    const [apiName, setApiName] = useState('');
+    const [apiKey, setApiKey] = useState('');
     
     const showToast = (message: string) => {
         setToastInfo({ show: true, message });
@@ -275,6 +316,12 @@ const RepositoryPage: React.FC = () => {
         showToast(`File created: ${fileName}`);
     };
 
+    const handleSetEnvVars = () => {
+        if (apiName.trim() && apiKey.trim()) {
+            showToast('Environment variables set for the container.');
+        }
+    };
+
     return (
         <div className="flex h-full bg-brand-dark text-brand-text">
             {toastInfo.show && <div className="fixed bottom-5 right-5 bg-neon-green text-black font-semibold py-2 px-4 rounded-lg shadow-lg z-50">{toastInfo.message}</div>}
@@ -286,6 +333,11 @@ const RepositoryPage: React.FC = () => {
                 onTemplateChange={handleTemplateChange}
                 onCommandRun={(cmd) => showToast(`Running: ${cmd.command}`)}
                 onShowToast={showToast}
+                apiName={apiName}
+                onApiNameChange={setApiName}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                onSetEnvVars={handleSetEnvVars}
             />
         </div>
     );
