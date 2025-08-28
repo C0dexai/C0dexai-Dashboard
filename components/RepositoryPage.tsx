@@ -14,6 +14,9 @@ const NewFileIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" widt
 const CommitIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>;
 const UploadIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
 const DownloadIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+const StageIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
+const UnstageIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
+
 const TargetIcon: React.FC<{ target: AgentCommand['target'] }> = ({ target }) => {
     const commonClasses = "h-4 w-4 mr-2 flex-shrink-0";
     switch(target) {
@@ -30,7 +33,7 @@ const TargetIcon: React.FC<{ target: AgentCommand['target'] }> = ({ target }) =>
 const findNodeByPath = (nodes: RepoNode[], path: string): RepoNode | null => {
   for (const node of nodes) {
     if (node.path === path) return node;
-    if (node.type === 'folder') {
+    if (node.type === 'folder' && path.startsWith(node.path + (node.path === '/' ? '' : '/'))) {
       const found = findNodeByPath(node.children, path);
       if (found) return found;
     }
@@ -41,7 +44,7 @@ const findNodeByPath = (nodes: RepoNode[], path: string): RepoNode | null => {
 const updateNodeInTree = (nodes: RepoNode[], path: string, updatedNode: RepoNode): RepoNode[] => {
   return nodes.map(node => {
     if (node.path === path) return updatedNode;
-    if (node.type === 'folder' && path.startsWith(node.path + '/')) {
+    if (node.type === 'folder' && path.startsWith(node.path + (node.path === '/' ? '' : '/'))) {
       return { ...node, children: updateNodeInTree(node.children, path, updatedNode) };
     }
     return node;
@@ -51,18 +54,42 @@ const updateNodeInTree = (nodes: RepoNode[], path: string, updatedNode: RepoNode
 // --- SUB-COMPONENTS ---
 
 interface FileNodeProps {
-    node: RepoNode;
+    node: File;
     onSelectFile: (path: string) => void;
     selectedFilePath: string | null;
+    isModified: boolean;
+    isStaged: boolean;
     level: number;
 }
 
-const FileNodeDisplay: React.FC<FileNodeProps> = ({ node, onSelectFile, selectedFilePath, level }) => {
-    const [isOpen, setIsOpen] = useState(true);
-
+const FileNodeDisplay: React.FC<FileNodeProps> = ({ node, onSelectFile, selectedFilePath, isModified, isStaged, level }) => {
     const isSelected = selectedFilePath === node.path;
+    const statusText = isStaged ? 'text-neon-green' : (isModified ? 'text-yellow-400' : '');
+    const statusIndicator = isStaged 
+        ? <span className="ml-auto text-xs text-neon-green font-bold" title="Staged">S</span>
+        : isModified 
+        ? <span className="ml-auto text-xs text-yellow-400 font-bold" title="Modified">M</span> 
+        : null;
 
-    if (node.type === 'folder') {
+    return (
+        <div onClick={() => onSelectFile(node.path)} className={`flex items-center cursor-pointer py-1 pr-2 rounded hover:bg-white/10 ${isSelected ? 'bg-neon-purple/20' : ''}`} style={{ paddingLeft: `${level * 1}rem` }}>
+            <FileIcon />
+            <span className={`text-sm truncate ${statusText}`}>{node.name}</span>
+            {statusIndicator}
+        </div>
+    );
+};
+
+const FileExplorer: React.FC<{ structure: Folder; onSelectFile: (path: string) => void; selectedFilePath: string | null; modifiedFiles: Map<string, string>; stagedFiles: Set<string>; onNewFile: () => void }> = ({ structure, onSelectFile, selectedFilePath, modifiedFiles, stagedFiles, onNewFile }) => {
+    const renderNode = (node: RepoNode, level: number) => {
+        if (node.type === 'folder') {
+            return <FolderNodeDisplay key={node.path} node={node} level={level} />;
+        }
+        return <FileNodeDisplay key={node.path} node={node} onSelectFile={onSelectFile} selectedFilePath={selectedFilePath} isModified={modifiedFiles.has(node.path)} isStaged={stagedFiles.has(node.path)} level={level} />;
+    };
+
+    const FolderNodeDisplay: React.FC<{ node: Folder; level: number }> = ({ node, level }) => {
+        const [isOpen, setIsOpen] = useState(true);
         return (
             <div>
                 <div onClick={() => setIsOpen(!isOpen)} className="flex items-center cursor-pointer py-1 px-2 rounded hover:bg-white/10" style={{ paddingLeft: `${level * 1}rem` }}>
@@ -70,26 +97,11 @@ const FileNodeDisplay: React.FC<FileNodeProps> = ({ node, onSelectFile, selected
                     <FolderIcon isOpen={isOpen} />
                     <span className="text-sm">{node.name}</span>
                 </div>
-                {isOpen && (
-                    <div>
-                        {node.children.map(child => (
-                            <FileNodeDisplay key={child.path} node={child} onSelectFile={onSelectFile} selectedFilePath={selectedFilePath} level={level + 1} />
-                        ))}
-                    </div>
-                )}
+                {isOpen && <div>{node.children.map(child => renderNode(child, level + 1))}</div>}
             </div>
         );
-    }
+    };
 
-    return (
-        <div onClick={() => onSelectFile(node.path)} className={`flex items-center cursor-pointer py-1 px-2 rounded hover:bg-white/10 ${isSelected ? 'bg-neon-purple/20' : ''}`} style={{ paddingLeft: `${level * 1}rem` }}>
-            <FileIcon />
-            <span className="text-sm">{node.name}</span>
-        </div>
-    );
-};
-
-const FileExplorer: React.FC<{ structure: Folder, onSelectFile: (path: string) => void, selectedFilePath: string | null, onNewFile: () => void }> = ({ structure, onSelectFile, selectedFilePath, onNewFile }) => {
     return (
         <div className="w-64 flex-shrink-0 bg-brand-panel/50 border-r border-brand-border p-2 flex flex-col">
             <div className="flex justify-between items-center p-2 mb-2 border-b border-brand-border">
@@ -97,9 +109,7 @@ const FileExplorer: React.FC<{ structure: Folder, onSelectFile: (path: string) =
                 <button onClick={onNewFile} className="p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text" title="New File"><NewFileIcon /></button>
             </div>
             <div className="flex-1 overflow-y-auto">
-                {structure.children.map(node => (
-                    <FileNodeDisplay key={node.path} node={node} onSelectFile={onSelectFile} selectedFilePath={selectedFilePath} level={0} />
-                ))}
+                {structure.children.map(node => renderNode(node, 0))}
             </div>
         </div>
     );
@@ -126,7 +136,12 @@ const EditorPanel: React.FC<{ file: File | null; content: string; onContentChang
 };
 
 const ActionsPanel: React.FC<{
-    stagedFiles: string[];
+    modifiedFiles: Map<string, string>;
+    stagedFiles: Set<string>;
+    onStageFile: (path: string) => void;
+    onUnstageFile: (path: string) => void;
+    onStageAll: () => void;
+    onUnstageAll: () => void;
     onCommit: (message: string) => void;
     onTemplateChange: (templateId: string) => void;
     onCommandRun: (command: AgentCommand) => void;
@@ -136,11 +151,14 @@ const ActionsPanel: React.FC<{
     apiKey: string;
     onApiKeyChange: (value: string) => void;
     onSetEnvVars: () => void;
-}> = ({ stagedFiles, onCommit, onTemplateChange, onCommandRun, onShowToast, apiName, onApiNameChange, apiKey, onApiKeyChange, onSetEnvVars }) => {
+}> = ({ modifiedFiles, stagedFiles, onStageFile, onUnstageFile, onStageAll, onUnstageAll, onCommit, onTemplateChange, onCommandRun, onShowToast, apiName, onApiNameChange, apiKey, onApiKeyChange, onSetEnvVars }) => {
     const [commitMessage, setCommitMessage] = useState('');
+    
+    const unstagedChanges = Array.from(modifiedFiles.keys()).filter(path => !stagedFiles.has(path));
+    const stagedChangesArray = Array.from(stagedFiles);
 
     const handleCommit = () => {
-        if (commitMessage.trim() && stagedFiles.length > 0) {
+        if (commitMessage.trim() && stagedFiles.size > 0) {
             onCommit(commitMessage);
             setCommitMessage('');
         }
@@ -151,24 +169,65 @@ const ActionsPanel: React.FC<{
              {/* Source Control */}
             <div className="mb-6">
                 <h3 className="font-bold mb-2">Source Control</h3>
+                
+                {/* Changes */}
+                <div className="mb-2">
+                    <div className="flex justify-between items-center mb-1">
+                        <h4 className="font-semibold text-xs text-brand-text-muted">Changes ({unstagedChanges.length})</h4>
+                        <button onClick={onStageAll} disabled={unstagedChanges.length === 0} className="p-1 rounded hover:bg-white/10 disabled:opacity-50" title="Stage All Changes">
+                            <StageIcon/>
+                        </button>
+                    </div>
+                    <div className="max-h-24 overflow-y-auto text-xs space-y-1 p-1 bg-brand-dark/30 rounded">
+                        {unstagedChanges.length > 0 
+                            ? unstagedChanges.map(path => (
+                                <div key={path} className="group flex items-center justify-between truncate p-1 bg-yellow-400/10 text-yellow-400 rounded hover:bg-yellow-400/20">
+                                    <span className="truncate" title={path}>{path.substring(1)}</span>
+                                    <button onClick={() => onStageFile(path)} className="opacity-0 group-hover:opacity-100 text-yellow-200 hover:text-white flex-shrink-0 ml-2" title="Stage File">
+                                        <StageIcon/>
+                                    </button>
+                                </div>
+                            ))
+                            : <div className="text-brand-text-muted text-center p-1">No unstaged changes</div>
+                        }
+                    </div>
+                </div>
+                
+                {/* Staged Changes */}
+                <div className="mb-2">
+                    <div className="flex justify-between items-center mb-1">
+                        <h4 className="font-semibold text-xs text-brand-text-muted">Staged Changes ({stagedChangesArray.length})</h4>
+                         <button onClick={onUnstageAll} disabled={stagedChangesArray.length === 0} className="p-1 rounded hover:bg-white/10 disabled:opacity-50" title="Unstage All Changes">
+                            <UnstageIcon />
+                        </button>
+                    </div>
+                    <div className="max-h-24 overflow-y-auto text-xs space-y-1 p-1 bg-brand-dark/30 rounded">
+                        {stagedChangesArray.length > 0 
+                            ? stagedChangesArray.map(path => (
+                                <div key={path} className="group flex items-center justify-between truncate p-1 bg-neon-green/10 text-neon-green rounded hover:bg-neon-green/20">
+                                    <span className="truncate" title={path}>{path.substring(1)}</span>
+                                    <button onClick={() => onUnstageFile(path)} className="opacity-0 group-hover:opacity-100 text-green-200 hover:text-white flex-shrink-0 ml-2" title="Unstage File">
+                                        <UnstageIcon />
+                                    </button>
+                                </div>
+                            ))
+                            : <div className="text-brand-text-muted text-center p-1">No staged changes</div>
+                        }
+                    </div>
+                </div>
+
                 <textarea
                     placeholder="Commit message"
                     value={commitMessage}
                     onChange={(e) => setCommitMessage(e.target.value)}
-                    className="w-full bg-brand-dark/50 border border-brand-border rounded-md p-2 h-20 text-xs focus:ring-neon-purple focus:border-neon-purple"
+                    className="w-full bg-brand-dark/50 border border-brand-border rounded-md p-2 h-20 text-xs focus:ring-neon-purple focus:border-neon-purple mt-2"
                 />
-                <div className="mt-2">
-                    <h4 className="font-semibold text-xs text-brand-text-muted mb-1">Staged Changes ({stagedFiles.length})</h4>
-                    <div className="max-h-24 overflow-y-auto text-xs space-y-1">
-                        {stagedFiles.map(path => <div key={path} className="truncate p-1 bg-white/5 rounded">{path}</div>)}
-                    </div>
-                </div>
                 <button
                     onClick={handleCommit}
-                    disabled={!commitMessage.trim() || stagedFiles.length === 0}
+                    disabled={!commitMessage.trim() || stagedFiles.size === 0}
                     className="w-full bg-neon-green/80 text-black font-bold py-2 rounded-md mt-2 hover:bg-neon-green disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                 >
-                   <CommitIcon /> <span className="ml-2">Commit</span>
+                   <CommitIcon /> <span className="ml-2">Commit ({stagedChangesArray.length})</span>
                 </button>
             </div>
             {/* Templates */}
@@ -245,6 +304,7 @@ const RepositoryPage: React.FC = () => {
     const [structure, setStructure] = useState<Folder>(INITIAL_REPO_STRUCTURE);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [editorContent, setEditorContent] = useState<string>('');
+    const [modifiedFiles, setModifiedFiles] = useState<Map<string, string>>(new Map());
     const [stagedFiles, setStagedFiles] = useState<Set<string>>(new Set());
     const [toastInfo, setToastInfo] = useState<{show: boolean; message: string}>({show: false, message: ''});
     const [apiName, setApiName] = useState('');
@@ -259,36 +319,88 @@ const RepositoryPage: React.FC = () => {
         const node = findNodeByPath([structure], path);
         if (node && node.type === 'file') {
             setSelectedFile(node);
-            setEditorContent(node.content);
+            setEditorContent(modifiedFiles.get(path) ?? node.content);
         }
-    }, [structure]);
+    }, [structure, modifiedFiles]);
     
     const handleContentChange = (newContent: string) => {
         if (!selectedFile) return;
         setEditorContent(newContent);
-        if (selectedFile.content !== newContent) {
-            setStagedFiles(prev => new Set(prev).add(selectedFile.path));
-        } else {
-            setStagedFiles(prev => {
-                const next = new Set(prev);
-                next.delete(selectedFile.path);
-                return next;
-            });
-        }
+
+        setModifiedFiles(prevMap => {
+            const newMap = new Map(prevMap);
+            // Get original content from structure to compare
+            const originalNode = findNodeByPath([structure], selectedFile.path);
+            const originalContent = (originalNode && originalNode.type === 'file') ? originalNode.content : '';
+
+            if (originalContent !== newContent) {
+                newMap.set(selectedFile.path, newContent);
+            } else {
+                newMap.delete(selectedFile.path);
+            }
+            return newMap;
+        });
+    };
+    
+    const handleStageFile = (path: string) => {
+        setStagedFiles(prev => new Set(prev).add(path));
+    };
+
+    const handleUnstageFile = (path: string) => {
+        setStagedFiles(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(path);
+            return newSet;
+        });
+    };
+
+    const handleStageAll = () => {
+        const unstagedPaths = Array.from(modifiedFiles.keys()).filter(path => !stagedFiles.has(path));
+        setStagedFiles(prev => new Set([...prev, ...unstagedPaths]));
+    };
+
+    const handleUnstageAll = () => {
+        setStagedFiles(new Set());
     };
 
     const handleCommit = (message: string) => {
-        if (!selectedFile || !stagedFiles.has(selectedFile.path)) {
-             showToast(`Commit successful: ${message}`);
-             setStagedFiles(new Set());
-             return;
-        };
+        if (stagedFiles.size === 0) {
+            showToast("No changes staged for commit.");
+            return;
+        }
 
-        const updatedFile: File = { ...selectedFile, content: editorContent };
-        const newStructure = updateNodeInTree([structure], selectedFile.path, updatedFile) as Folder[];
+        let currentStructure = structure;
+        const committedPaths = new Set(stagedFiles);
+
+        stagedFiles.forEach(path => {
+            const content = modifiedFiles.get(path);
+            if (content === undefined) return;
+
+            const nodeToUpdate = findNodeByPath([currentStructure], path);
+            if (nodeToUpdate && nodeToUpdate.type === 'file') {
+                const updatedNode: File = { ...nodeToUpdate, content };
+                const newChildren = updateNodeInTree(currentStructure.children, path, updatedNode);
+                currentStructure = { ...currentStructure, children: newChildren };
+            }
+        });
+
+        setStructure(currentStructure);
         
-        setStructure(newStructure[0]);
+        setModifiedFiles(prevMap => {
+            const newMap = new Map(prevMap);
+            committedPaths.forEach(path => newMap.delete(path));
+            return newMap;
+        });
         setStagedFiles(new Set());
+
+        if (selectedFile && committedPaths.has(selectedFile.path)) {
+            const freshNode = findNodeByPath([currentStructure], selectedFile.path);
+            if(freshNode && freshNode.type === 'file') {
+                setSelectedFile(freshNode);
+                setEditorContent(freshNode.content);
+            }
+        }
+        
         showToast(`Commit successful: ${message}`);
     };
     
@@ -298,6 +410,7 @@ const RepositoryPage: React.FC = () => {
             setStructure(template.structure);
             setSelectedFile(null);
             setEditorContent('');
+            setModifiedFiles(new Map());
             setStagedFiles(new Set());
             showToast(`Template "${template.name}" loaded.`);
         }
@@ -325,10 +438,22 @@ const RepositoryPage: React.FC = () => {
     return (
         <div className="flex h-full bg-brand-dark text-brand-text">
             {toastInfo.show && <div className="fixed bottom-5 right-5 bg-neon-green text-black font-semibold py-2 px-4 rounded-lg shadow-lg z-50">{toastInfo.message}</div>}
-            <FileExplorer structure={structure} onSelectFile={handleSelectFile} selectedFilePath={selectedFile?.path || null} onNewFile={handleNewFile}/>
+            <FileExplorer 
+                structure={structure} 
+                onSelectFile={handleSelectFile} 
+                selectedFilePath={selectedFile?.path || null} 
+                modifiedFiles={modifiedFiles}
+                stagedFiles={stagedFiles}
+                onNewFile={handleNewFile}
+            />
             <EditorPanel file={selectedFile} content={editorContent} onContentChange={handleContentChange} />
             <ActionsPanel 
-                stagedFiles={Array.from(stagedFiles)} 
+                modifiedFiles={modifiedFiles}
+                stagedFiles={stagedFiles} 
+                onStageFile={handleStageFile}
+                onUnstageFile={handleUnstageFile}
+                onStageAll={handleStageAll}
+                onUnstageAll={handleUnstageAll}
                 onCommit={handleCommit} 
                 onTemplateChange={handleTemplateChange}
                 onCommandRun={(cmd) => showToast(`Running: ${cmd.command}`)}
